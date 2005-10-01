@@ -9,8 +9,8 @@ pipe(R, W) ;
 
 my $mr = new IO::Mux(\*R) ;
 is($mr->get_handle(), \*R) ;
-my $mw = new IO::Mux(\*W) ;
-is($mw->get_handle(), \*W) ;
+my $mw = new IO::Mux(*W{IO}) ;
+is($mw->get_handle(), *W{IO}) ;
 
 my $rc = undef ;
 my $r = new IO::Mux::Handle($mr) ;
@@ -27,7 +27,7 @@ my $buf = undef ;
 
 # One packet tests
 $rc = print $w "test1" ;
-is($rc, 1) ;
+is($rc, 5) ;
 $buf = '' ;
 $rc = sysread($r, $buf, 4) ;
 is($rc, 4) ;
@@ -45,9 +45,9 @@ is(<$r>, "line1\n") ;
 
 # Reads that span multiple packets.
 $rc = print $w "p11" ;
-is($rc, 1) ;
+is($rc, 3) ;
 $rc = print $w "p21" ;
-is($rc, 1) ;
+is($rc, 3) ;
 
 $buf = '' ;
 $rc = sysread($r, $buf, 6) ;
@@ -86,9 +86,11 @@ is($rc, 1) ;
 # Use standard open to re-open using same handle
 $rc = open($w, 1) ;
 ok($rc) ;
-$rc = print $w "reopened\n" ;
-is($rc, 1) ;
-is(<$r>, "reopened\n") ;
+$buf = "reopened\n" ;
+$rc = syswrite($w, $buf, length($buf) - 2, 2) ;
+# This is incorrect. syswrite should return the number of bytes read.
+is($rc, length($buf) - 2) ;
+is(<$r>, "opened\n") ;
 
 
 # Failed re-open

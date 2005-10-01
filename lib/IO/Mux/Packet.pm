@@ -5,7 +5,7 @@ use IO::Handle ;
 use Carp ;
 
 
-our $VERSION = '0.04' ;
+our $VERSION = '0.05' ;
 
 
 sub new {
@@ -25,7 +25,7 @@ sub new {
 sub get_length {
 	my $this = shift ;
 
-	return length($this->{data}) ;
+	return (defined($this->{data}) ? length($this->{data}) : 0) ;
 }
 
 
@@ -89,7 +89,12 @@ sub write {
 	# We do not write empty packets, but we still return success.
 	return 1 if ! $this->get_length() ;
 
-	return print $fh $this->serialize() ;
+	my $ret = print $fh $this->serialize() ;
+	if ($ret){
+		$ret = $this->get_length() ;
+	}
+
+	return $ret ;
 }
 
 

@@ -27,9 +27,9 @@ is($rc, 1) ;
 
 # One packet tests
 $rc = print $w1 "test1" ;
-is($rc, 1) ;
+is($rc, 5) ;
 $rc = print $w2 "test2" ;
-is($rc, 1) ;
+is($rc, 5) ;
 
 $buf = '' ;
 $rc = sysread($r1, $buf, 4) ;

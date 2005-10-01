@@ -1,4 +1,4 @@
-IO-Mux version 0.04
+IO-Mux version 0.05
 ===================
 
 IO::Mux - Multiplex several virtual streams over a real pipe/socket

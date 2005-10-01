@@ -1,6 +1,6 @@
 use strict ;
 
-use Test::More tests => 33 ;
+use Test::More tests => 37 ;
 BEGIN { use_ok('IO::Mux::Select') } ;
 
 use IO::Mux ;
@@ -39,7 +39,14 @@ print $w1 "data\n" ;
 @ready = $ims->can_read(0) ;
 is(scalar(@ready), 1) ;
 is($ready[0], $r1) ;
-is(<$r1>, "data\n") ;
+$buf = 'a' ;
+$rc = read($r1, $buf, 2, 1) ;
+is($rc, 2) ;
+is($buf, 'ada') ;
+@ready = $ims->can_read(0) ;
+is(scalar(@ready), 1) ;
+is($ready[0], $r1) ;
+is(<$r1>, "ta\n") ;
 
 # 2 handles
 $ims->add($r2) ;

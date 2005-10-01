@@ -10,7 +10,7 @@ use IO::Handle ;
 use Carp ;
 
 
-our $VERSION = '0.04' ;
+our $VERSION = '0.05' ;
 
 
 sub new {
@@ -172,7 +172,7 @@ IO::Mux - Multiplex several virtual streams over a real pipe/socket
 
 =head1 DESCRIPTION
 
-C<IO::Mux> allows you to multiplex sevaral virtual streams over a single pipe
+C<IO::Mux> allows you to multiplex several virtual streams over a single pipe
 or socket. This is achieved by creating an C<IO::Mux> object on each end of the 
 real stream and then creating virtual handles (C<IO::Mux::Handle> objects) from
 these C<IO::Mux> objects.
@@ -209,7 +209,7 @@ created on $mux. Is equivalent to:
 
   new IO::Mux::Handle($mux) ;
 
-The handle must then be opened before being used. See L<IO::Mux::Handle/open>
+The handle must then be opened before being used. See L<IO::Mux::Handle>
 for more details.
 
 =back
@@ -218,9 +218,9 @@ for more details.
 =head1 NOTE
 
 Once a handle has been passed to an C<IO::Mux> object, it is important that 
-it is not written to/read from directly as this will corrupt the C<IO::Mux> stream.
-
-Once the C<IO::Mux> objects on both ends of the stream are out of scope (and have no data pending), normal usage of the handleis can resume.
+it is not written to/read from directly as this will corrupt the C<IO::Mux> 
+stream. Once the C<IO::Mux> objects on both ends of the stream are out of 
+scope (and have no data pending), normal usage of the handleis can resume.
 
 
 =head1 SEE ALSO

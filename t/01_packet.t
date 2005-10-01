@@ -1,7 +1,7 @@
 use strict ;
 use IO::Handle ;
 
-use Test::More tests => 15 ;
+use Test::More tests => 17 ;
 BEGIN { use_ok('IO::Mux::Packet') } ;
 
 my $p = new IO::Mux::Packet(1, "packet_data") ;
@@ -22,6 +22,10 @@ ok($p->get_id() == 1) ;
 $p = IO::Mux::Packet->read(\*R) ;
 ok($p->get_length() == 12) ;
 ok($p->get_data() eq "packet_data2") ;
+
+# Empty packet
+$p = new IO::Mux::Packet(1) ;
+ok($p->write(\*W)) ;
 
 # EOF packets
 $p = new IO::Mux::Packet(1) ;
@@ -77,3 +81,14 @@ eval {
 	$p = IO::Mux::Packet->read(\*R) ;
 } ;
 like($@, qr/Marker mismatch \(33,1\)/) ;
+
+pipe(R, W) ;
+$bytes = $p->serialize() ;
+substr($bytes, 5, 1, '!') ;
+print W $bytes ;
+close(W) ;
+eval {
+	$p = IO::Mux::Packet->read(\*R) ;
+} ;
+like($@, qr/Marker mismatch \(1,33\)/) ;
+

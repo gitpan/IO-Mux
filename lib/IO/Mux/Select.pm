@@ -8,7 +8,7 @@ use IO::Mux::Packet ;
 use Carp ;
 
 
-our $VERSION = '0.04' ;
+our $VERSION = '0.05' ;
 
 
 sub new {
@@ -147,7 +147,8 @@ sub can_read {
 				while (scalar($ts->can_read(0))){
 					my $p = $mux->read_packet() ;
 					if ((! defined($p))||(! $p)){
-						# ERROR or EOF on the real handle
+						# ERROR or EOF on the real handle. Return all mux_handles
+						# as they all now are at EOF or have an error state.
 						foreach my $mh (values %{$mux_data->{mux_handles}}){
 							if (! $ready{$mh}){
 								push @ready, $mh ;
@@ -208,7 +209,7 @@ L<IO::Mux::Handle> objects.
 =head1 DESCRIPTION
 
 C<IO::Mux::Select> is a drop-in replacement for L<IO::Select> that knows how 
-to deal with L<IO::Mux::Handle> handles. It can also handle real handles so 
+to deal with L<IO::Mux::Handle> handles. It also supports real handles so 
 you can mix L<IO::Mux::Handle> handles with real handles.
 
 
@@ -229,19 +230,31 @@ of handles.
 The same interface as L<IO::Select> is supported, with the following 
 exceptions:
 
-=head2 UNSUPPORTED API
-
-The following L<IO::Select> methods are not implemented:
-
 =over 4
+
+=item can_read ( [ TIMEOUT ] )
+
+This method behaves pretty much like the L<IO::Select> one, except it is not 
+guaranteed that it will return before TIMEOUT seconds. The reason for this is 
+that the L<IO:Mux::Handle> objets handle data in packets, so if data is 
+"detected" on such a handle, can_read() must read the entire packet before 
+returning.
 
 =item can_write ( [ TIMEOUT ] )
 
+Not implemented.
+
 =item has_exception ( [ TIMEOUT ] )
 
-=item bits()
+Not implemented.
+
+=item bits ()
+
+Not implemented.
 
 =item select ( READ, WRITE, EXCEPTION [, TIMEOUT ] )
+
+Not implemented.
 
 =back
 
