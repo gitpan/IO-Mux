@@ -4,8 +4,10 @@ use Test::More tests => 37 ;
 BEGIN { use_ok('IO::Mux::Select') } ;
 
 use IO::Mux ;
+use Socket ;
 
-pipe(R, W) ;
+socketpair(R, W, PF_UNIX, SOCK_STREAM, PF_UNSPEC) ;
+
 my $mr = new IO::Mux(\*R) ;
 my $mw = new IO::Mux(\*W) ;
 my $rc = undef ;
@@ -72,7 +74,7 @@ ok(! $ims->exists($r1)) ;
 is(scalar(@ready), 0) ;
 
 # Add real handle
-pipe(RR, RW) ;
+socketpair(RR, RW, PF_UNIX, SOCK_STREAM, PF_UNSPEC) ;
 RW->autoflush(1) ;
 $ims->add(\*RR) ;
 ok($ims->exists(\*RR)) ;

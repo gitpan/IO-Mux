@@ -10,7 +10,7 @@ use IO::Handle ;
 use Carp ;
 
 
-our $VERSION = '0.05' ;
+our $VERSION = '0.06' ;
 
 
 sub new {
@@ -38,7 +38,7 @@ sub new {
 sub get_handle {
 	my $this = shift ;
 
-	return $this->{'glob'} || $this->{fh} ;
+	return (defined($this->{'glob'}) ? $this->{'glob'} : $this->{fh}) ;
 }
 
 

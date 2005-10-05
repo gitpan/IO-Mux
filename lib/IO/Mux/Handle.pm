@@ -5,7 +5,7 @@ use strict ;
 use IO::Handle ;
 
 
-our $VERSION = '0.05' ;
+our $VERSION = '0.06' ;
 
 
 sub new {
@@ -31,14 +31,6 @@ sub get_error {
 	my $this = shift ;
 
 	return $this->get_tie()->get_error() ;
-}
-
-
-sub set_error {
-	my $this = shift ;
-	my $msg = shift ;
-	
-	$this->get_tie()->set_error($msg) ;
 }
 
 
@@ -174,7 +166,10 @@ sub WRITE {
 	my $this = shift ;
 	my ($buf, $len, $offset) = @_ ;
 
-	return undef if $this->{closed} ;
+	if ($this->{closed}){
+		$this->set_error("WRITE on closed filehandle") ;
+		return undef ;
+	}
 
 	my $p = new IO::Mux::Packet($this->get_id(), substr($buf, $offset || 0, $len)) ;
 	my $rc = $this->{mux}->write($p) ;
@@ -187,14 +182,17 @@ sub READ {
 	my $this = shift ;
 	my ($buf, $len, $offset) = @_ ;
 
-	return undef if $this->{closed} ;
+	if ($this->{closed}){
+		$this->set_error("READ on closed filehandle") ;
+		return undef ;
+	}
 	return 0 if $this->get_eof() ;
 
 	# Load the buffer until there is enough data or EOF.
 	while ($this->get_buffer()->get_length() < $len){
 		my $rc = $this->read_more_data() ;
 		if (! defined($rc)){
-			return undef ;
+			return undef ; # error already set by read_more_data
 		}
 		elsif (! $rc){
 			# EOF
@@ -221,14 +219,17 @@ sub READ {
 sub READLINE {
 	my $this = shift ;
 
-	return undef if $this->{closed} ;
+	if ($this->{closed}){
+		$this->set_error("READLINE on closed filehandle") ;
+		return undef ;
+	}
 	return undef if $this->get_eof() ;
 
 	my $idx = -1 ;
 	while (($idx = index($this->get_buffer()->get_data(), "\n")) == -1){
 		my $rc = $this->read_more_data() ;
 		if (! defined($rc)){
-			return undef ;
+			return undef ; # error already set by read_more_data
 		}
 		elsif (! $rc){
 			# EOF
@@ -315,7 +316,11 @@ sub SEEK {
 sub BINMODE {
 	my $this = shift ;
 
-	return undef if $this->{closed} ;
+	if ($this->{closed}){
+		$this->set_error("BINMODE on closed filehandle") ;
+		return undef ;
+	}
+
 	return 1 ;
 }
 
@@ -330,7 +335,11 @@ sub FILENO {
 sub TELL {
 	my $this = shift ;
 
-	return -1 if $this->{closed} ;
+	if ($this->{closed}){
+		$this->set_error("TELL on closed filehandle") ;
+		return -1 ;
+	}
+
 	return 0 ;
 }
 

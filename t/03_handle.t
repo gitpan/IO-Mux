@@ -1,7 +1,7 @@
 use strict ;
 use IO::Handle ;
 
-use Test::More tests => 37 ;
+use Test::More tests => 41 ;
 BEGIN { use_ok('IO::Mux') } ;
 BEGIN { use_ok('IO::Mux::Handle') } ;
 
@@ -71,6 +71,15 @@ $buf = '' ;
 $rc = sysread($r, $buf, 1) ;
 is($rc, 0) ;
 ok(eof($r)) ;
+
+# Read from closed handle
+$rc = close($r) ;
+ok($rc) ;
+$rc = close($r) ;
+ok(! $rc) ;
+$rc = sysread($r, $buf, 1) ;
+is($rc, undef) ;
+is(<$r>, undef) ;
 
 # Print to closed handle
 $rc = print $w "test" ;
