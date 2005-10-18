@@ -97,6 +97,7 @@ is(scalar(@ready), 1) ;
 
 $ims->remove(\*RR) ;
 ok(! $ims->exists(\*RR)) ;
+$ims->remove(\*RR) ; # coverage
 @ready = $ims->can_read(0) ;
 
 is(scalar(@ready), 0) ;

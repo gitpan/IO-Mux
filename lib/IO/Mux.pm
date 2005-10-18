@@ -10,7 +10,7 @@ use IO::Handle ;
 use Carp ;
 
 
-our $VERSION = '0.06' ;
+our $VERSION = '0.07' ;
 
 
 sub new {
@@ -20,8 +20,8 @@ sub new {
 	my $this = {} ;
 	if (UNIVERSAL::isa($fh, 'GLOB')){
 		# Make sure we save the actual IO bit, not the entire GLOB ref, because
-		# une typical usage could be to place \*STDOUT in a IO::Mux object and then
-		# do: *STDOUT = $mux. If wew save the GLOB ref, that will create infinite
+		# one typical usage could be to place \*STDOUT in a IO::Mux object and then
+		# do: *STDOUT = $mux. If we save the GLOB ref, that will create infinite
 		# recursion as the GLOB is deferenced each time to get the IO bit.
 		$this->{'glob'} = $fh ;
 		$fh = *{$fh}{IO} ;
@@ -42,6 +42,13 @@ sub get_handle {
 }
 
 
+sub _get_handle {
+	my $this = shift ;
+
+	return $this->{fh} ;
+}
+
+
 sub new_handle {
 	my $this = shift ;
 
@@ -49,11 +56,11 @@ sub new_handle {
 }
 
 
-sub get_buffer {
+sub _get_buffer {
 	my $this = shift ;
 	my $id = shift ;
 
-	if (! $this->buffer_exists($id)){
+	if (! $this->_buffer_exists($id)){
 		$this->{buffers}->{$id} = new IO::Mux::Buffer() ; 
 	}
 
@@ -61,7 +68,7 @@ sub get_buffer {
 }
 
 
-sub buffer_exists {
+sub _buffer_exists {
 	my $this = shift ;
 	my $id = shift ;
 
@@ -69,7 +76,7 @@ sub buffer_exists {
 }
 
 
-sub kill_buffer {
+sub _kill_buffer {
 	my $this = shift ;
 	my $id = shift ;
 
@@ -77,15 +84,18 @@ sub kill_buffer {
 }
 
 
-sub read {
+sub _read {
 	my $this = shift ;
 	my $id = shift ;
 
 	my $p = undef ;
 	while (! defined($p)){
-		my $tp = $this->read_packet() ;
+		my $tp = $this->_read_packet() ;
 		if (! defined($tp)){
 			return undef ;
+		}
+		elsif (! $tp){
+			return 0 ;
 		}
 		elsif ($tp->get_id() eq $id){
 			if (! $tp->is_eof()){
@@ -101,10 +111,10 @@ sub read {
 }
 
 
-sub read_packet {
+sub _read_packet {
 	my $this = shift ;
 
-	my $p = IO::Mux::Packet->read($this->get_handle()) ;
+	my $p = IO::Mux::Packet->read($this->_get_handle()) ;
 	if (! defined($p)){
 		return undef ;
 	}
@@ -118,7 +128,7 @@ sub read_packet {
 		}
 		else {
 			# Append the packet data to the correct buffer
-			my $buf = $this->get_buffer($p->get_id()) ;
+			my $buf = $this->_get_buffer($p->get_id()) ;
 			$buf->push_packet($p) ;
 
 			return $p ;
@@ -127,11 +137,11 @@ sub read_packet {
 }
 
 
-sub write {
+sub _write {
 	my $this = shift ;
 	my $packet = shift ;
 
-	return $packet->write($this->get_handle()) ;
+	return $packet->write($this->_get_handle()) ;
 }
 
 
@@ -200,7 +210,10 @@ be turned on for HANDLE.
 
 =item $mux->get_handle ()
 
-Returns the handle passed when $mux was created.
+Returns the handle passed when $mux was created. Note that if a GLOB reference
+was originately passed, only the IO component of the glob will be returned. 
+Therefore it is possible that the value returned here be different than the one
+actually passed in the constructor.
 
 =item $mux->new_handle ()
 

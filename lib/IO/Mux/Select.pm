@@ -8,7 +8,7 @@ use IO::Mux::Packet ;
 use Carp ;
 
 
-our $VERSION = '0.06' ;
+our $VERSION = '0.07' ;
 
 
 sub new {
@@ -25,14 +25,14 @@ sub new {
 }
 
 
-sub get_select {
+sub _get_select {
 	my $this = shift ;
 
 	return $this->{'select'} ;
 }
 
 
-sub get_mux_handles {
+sub _get_mux_handles {
 	my $this = shift ;
 
 	return $this->{mux_handles} ;
@@ -44,10 +44,10 @@ sub add {
 
 	foreach my $h (@_){
 		if ($h->isa('IO::Mux::Handle')){
-			$this->get_mux_handles()->{$h->get_tie()->get_id()} = $h ;
+			$this->_get_mux_handles()->{$h->_get_tie()->_get_id()} = $h ;
 		}
 		else { 
-			$this->get_select()->add($h) ;
+			$this->_get_select()->add($h) ;
 		}
 	}
 }
@@ -58,10 +58,10 @@ sub remove {
 
 	foreach my $h (@_){
 		if ($h->isa('IO::Mux::Handle')){
-			delete $this->get_mux_handles()->{$h->get_tie()->get_id()} ;
+			delete $this->_get_mux_handles()->{$h->_get_tie()->_get_id()} ;
 		}		
-		elsif ($this->get_select()->exists($h)){
-			$this->get_select()->remove($h) ;
+		elsif ($this->_get_select()->exists($h)){
+			$this->_get_select()->remove($h) ;
 		}
 	}
 }
@@ -72,10 +72,10 @@ sub exists {
 	my $h = shift ;
 
 	if ($h->isa('IO::Mux::Handle')){
-		return $this->get_mux_handles()->{$h->get_tie()->get_id()} ;
+		return $this->_get_mux_handles()->{$h->_get_tie()->_get_id()} ;
 	}
 	else {
-		return $this->get_select()->exists($h) ;
+		return $this->_get_select()->exists($h) ;
 	}
 }
 
@@ -84,8 +84,8 @@ sub handles {
 	my $this = shift ;
 
 	my @ret = () ;
-	push @ret, values %{$this->get_mux_handles()} ;
-	push @ret, $this->get_select()->handles() ;
+	push @ret, values %{$this->_get_mux_handles()} ;
+	push @ret, $this->_get_select()->handles() ;
 
 	return @ret ;
 }
@@ -104,34 +104,34 @@ sub can_read {
 
 	# First, we will check to see if the IO::Mux::Handles have data in their buffers.
 	my @ready = () ;
-	foreach my $h (values %{$this->get_mux_handles()}){
-		if ((eof($h))||($h->get_tie()->get_buffer()->get_length() > 0)){
+	foreach my $h (values %{$this->_get_mux_handles()}){
+		if ((eof($h))||($h->_get_tie()->_get_buffer()->get_length() > 0)){
 			push @ready, $h ;
 		}
 	}
 
 	if (scalar(@ready)){
 		# Maybe some real handles are immediately ready
-		push @ready, $this->get_select()->can_read(0) ;
+		push @ready, $this->_get_select()->can_read(0) ;
 		return @ready ;
 	}
 
 	# So it seems we may have to wait after all. We now need to build a list
 	# of all the REAL handles underneath all the IO::Mux::Handles.
 	my %mux_objects = () ;
-	foreach my $h (values %{$this->get_mux_handles()}){
-		my $mux = $h->get_tie()->get_mux() ;
-		my $rh = $mux->get_handle() ;
+	foreach my $h (values %{$this->_get_mux_handles()}){
+		my $mux = $h->_get_tie()->_get_mux() ;
+		my $rh = $mux->_get_handle() ;
 		if (! exists($mux_objects{$rh})){
 			$mux_objects{$rh} = {mux => $mux, mux_handles => {}} ;
 		}
 		$mux_objects{$rh}->{mux_handles}->{$h} = $h ;
 	}
 
-	my @real_handles = map {$_->{mux}->get_handle()} values(%mux_objects) ;
-	$this->get_select()->add(@real_handles) ;
-	@ready = $this->get_select()->can_read($timeout) ;
-	$this->get_select()->remove(@real_handles) ;
+	my @real_handles = map {$_->{mux}->_get_handle()} values(%mux_objects) ;
+	$this->_get_select()->add(@real_handles) ;
+	@ready = $this->_get_select()->can_read($timeout) ;
+	$this->_get_select()->remove(@real_handles) ;
 
 	if (scalar(@ready)){
 		my @tmp = @ready ;
@@ -145,7 +145,7 @@ sub can_read {
 				# and add the corresponding IO::Mux::Handle in the new ready list.
 				my $ts = new IO::Select($h) ;
 				while (scalar($ts->can_read(0))){
-					my $p = $mux->read_packet() ;
+					my $p = $mux->_read_packet() ;
 					if ((! defined($p))||(! $p)){
 						# ERROR or EOF on the real handle. Return all mux_handles
 						# as they all now are at EOF or have an error state.
@@ -158,11 +158,11 @@ sub can_read {
 						$ts->remove($h) ;
 					}
 					else {
-						my $mh = $this->get_mux_handles()->{$p->get_id()} ;
+						my $mh = $this->_get_mux_handles()->{$p->get_id()} ;
 						if (! $ready{$mh}){
 							push @ready, $mh ;
 							if ($p->is_eof()){
-								$mh->get_tie()->set_eof() ;
+								$mh->_get_tie()->_set_eof() ;
 							}
 							$ready{$mh} = 1 ;
 						}

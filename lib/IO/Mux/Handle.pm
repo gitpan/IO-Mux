@@ -5,7 +5,7 @@ use strict ;
 use IO::Handle ;
 
 
-our $VERSION = '0.06' ;
+our $VERSION = '0.07' ;
 
 
 sub new {
@@ -30,11 +30,11 @@ sub open {
 sub get_error {
 	my $this = shift ;
 
-	return $this->get_tie()->get_error() ;
+	return $this->_get_tie()->_get_error() ;
 }
 
 
-sub get_tie {
+sub _get_tie {
 	my $this = shift ;
 
 	return tied(*{$this}) ;
@@ -81,14 +81,14 @@ sub OPEN {
 	$this->CLOSE() ;
 
 	$id =~ s/\t/ /g ; # no \t's allowed in the id
-	if ($this->get_mux()->buffer_exists($id)){
-		$this->set_error("Id '$id' is already in use by another handle") ;
+	if ($this->_get_mux()->_buffer_exists($id)){
+		$this->_set_error("Id '$id' is already in use by another handle") ;
 		return undef ;
 	}
 
 	$this->{id} = $id ;
     # Allocate the buffer
-    $this->get_mux()->get_buffer($id) ;
+    $this->_get_mux()->_get_buffer($id) ;
 	$this->{closed} = 0 ;
 	$this->{'eof'} = 0 ;
 	$this->{error} = undef ;
@@ -97,42 +97,42 @@ sub OPEN {
 }
 
 
-sub get_mux {
+sub _get_mux {
 	my $this = shift ;
 
 	return $this->{mux} ;
 }
 
 
-sub get_id {
+sub _get_id {
 	my $this = shift ;
 
 	return $this->{id} ;
 }
 
 
-sub get_eof {
+sub _get_eof {
 	my $this = shift ;
 
 	return $this->{'eof'} ;
 }
 
 
-sub set_eof {
+sub _set_eof {
 	my $this = shift ;
 
 	$this->{'eof'} = 1 ;
 }
 
 
-sub get_error {
+sub _get_error {
 	my $this = shift ;
 
 	return $this->{error} ;
 }
 
 
-sub set_error {
+sub _set_error {
 	my $this = shift ;
 	my $msg = shift ;
 
@@ -146,33 +146,32 @@ sub set_error {
 }
 
 
-sub get_buffer {
+sub _get_buffer {
 	my $this = shift ;
 
-	return $this->get_mux()->get_buffer($this->get_id()) ;
+	return $this->_get_mux()->_get_buffer($this->_get_id()) ;
 }
 
 
-sub kill_buffer {
+sub _kill_buffer {
 	my $this = shift ;
 
-	return $this->get_mux()->kill_buffer($this->get_id()) ;
+	return $this->_get_mux()->_kill_buffer($this->_get_id()) ;
 }
 
 
 
-my $cnt = 0 ;
 sub WRITE {
 	my $this = shift ;
 	my ($buf, $len, $offset) = @_ ;
 
 	if ($this->{closed}){
-		$this->set_error("WRITE on closed filehandle") ;
+		$this->_set_error("WRITE on closed filehandle") ;
 		return undef ;
 	}
 
-	my $p = new IO::Mux::Packet($this->get_id(), substr($buf, $offset || 0, $len)) ;
-	my $rc = $this->{mux}->write($p) ;
+	my $p = new IO::Mux::Packet($this->_get_id(), substr($buf, $offset || 0, $len)) ;
+	my $rc = $this->_get_mux()->_write($p) ;
 
 	return $rc ;
 }
@@ -183,14 +182,14 @@ sub READ {
 	my ($buf, $len, $offset) = @_ ;
 
 	if ($this->{closed}){
-		$this->set_error("READ on closed filehandle") ;
+		$this->_set_error("READ on closed filehandle") ;
 		return undef ;
 	}
-	return 0 if $this->get_eof() ;
+	return 0 if $this->_get_eof() ;
 
 	# Load the buffer until there is enough data or EOF.
-	while ($this->get_buffer()->get_length() < $len){
-		my $rc = $this->read_more_data() ;
+	while ($this->_get_buffer()->get_length() < $len){
+		my $rc = $this->_read_more_data() ;
 		if (! defined($rc)){
 			return undef ; # error already set by read_more_data
 		}
@@ -201,13 +200,13 @@ sub READ {
 	}
 
 	# Shorten the length if we hit EOF...
-	if ($this->get_buffer()->get_length() < $len){
-		$len = $this->get_buffer()->get_length() ;
+	if ($this->_get_buffer()->get_length() < $len){
+		$len = $this->_get_buffer()->get_length() ;
 	}
 
 	if ($len > 0){
 		# Extract $len bytes from the beginning of the buffer and
-		my $data = $this->get_buffer()->shift_data($len) ;
+		my $data = $this->_get_buffer()->shift_data($len) ;
 		substr($buf, $offset || 0, $len) = $data ;
 		$_[0] = $buf ;
 	}
@@ -220,41 +219,60 @@ sub READLINE {
 	my $this = shift ;
 
 	if ($this->{closed}){
-		$this->set_error("READLINE on closed filehandle") ;
+		$this->_set_error("READLINE on closed filehandle") ;
 		return undef ;
 	}
-	return undef if $this->get_eof() ;
+	return (wantarray ? () : undef) if $this->_get_eof() ;
 
-	my $idx = -1 ;
-	while (($idx = index($this->get_buffer()->get_data(), "\n")) == -1){
-		my $rc = $this->read_more_data() ;
-		if (! defined($rc)){
-			return undef ; # error already set by read_more_data
+	my @ret = () ;
+	while (1){
+		my $idx = -1 ;
+		my $buf = undef ;
+		while ((! length($/))||(($idx = index($this->_get_buffer()->get_data(), $/)) == -1)){
+			my $rc = $this->_read_more_data() ;
+			if (! defined($rc)){
+				# Return what we got or return undef/() ?
+				last ; # error already set by read_more_data
+			}
+			elsif (! $rc){
+				# EOF
+				last ;
+			}
 		}
-		elsif (! $rc){
-			# EOF
+
+		if ($idx != -1){
+			$buf = $this->_get_buffer()->shift_data($idx + length($/)) ;
+		}
+		else {
+			# Empty the buffer
+			my $len = $this->_get_buffer()->get_length() ;
+			if ($len){
+				$buf = $this->_get_buffer()->shift_data($len) ;
+			}
+		}
+
+		if (defined($buf)){
+			push @ret, $buf ;
+			last unless wantarray ;
+		}
+		else {
 			last ;
 		}
 	}
 
-	if ($idx != -1){
-		return $this->get_buffer()->shift_data($idx + 1) ;
-	}
-	else{
-		return $this->get_buffer()->shift_data($this->get_buffer()->get_length()) ;
-	}
+	return (wantarray ? @ret : $ret[0]) ;
 }
 
 
-sub read_more_data {
+sub _read_more_data {
 	my $this = shift ;
 
 	my $rc = undef ;
 	eval {
-		$rc = $this->{mux}->read($this->get_id()) ;
+		$rc = $this->_get_mux()->_read($this->_get_id()) ;
 	} ;
 	if ($@){
-		$this->set_error($@) ;
+		$this->_set_error($@) ;
 		return undef ;
 	}
 	elsif (! defined($rc)){
@@ -262,7 +280,7 @@ sub read_more_data {
 	}
 	elsif (! $rc){
 		# We have reached EOF.
-		$this->set_eof() ;
+		$this->_set_eof() ;
 	}
 	
 	return $rc ;
@@ -273,7 +291,7 @@ sub EOF {
 	my $this = shift ;
 
 	return 1 if $this->{closed} ;
-	return $this->get_eof() ;
+	return $this->_get_eof() ;
 }
 
 
@@ -291,12 +309,12 @@ sub CLOSE {
 			warn $_[0] unless ($_[0] =~ /closed filehandle/i) ; 
 		} ;
 		local $SIG{PIPE} = sub {
-			close($this->get_mux()->get_handle()) ;
+			close($this->_get_mux()->_get_handle()) ;
 		} ;
 
-		$ret = $this->get_mux()->write($p) ;
+		$ret = $this->_get_mux()->_write($p) ;
 		$this->{closed} = 1 ;
-		$this->kill_buffer() ;
+		$this->_kill_buffer() ;
 		return 1 ;
 	}
 
@@ -317,7 +335,7 @@ sub BINMODE {
 	my $this = shift ;
 
 	if ($this->{closed}){
-		$this->set_error("BINMODE on closed filehandle") ;
+		$this->_set_error("BINMODE on closed filehandle") ;
 		return undef ;
 	}
 
@@ -328,7 +346,7 @@ sub BINMODE {
 sub FILENO {
 	my $this = shift ;
 
-	return $this->get_id() ;
+	return $this->_get_id() ;
 }
 
 
@@ -336,7 +354,7 @@ sub TELL {
 	my $this = shift ;
 
 	if ($this->{closed}){
-		$this->set_error("TELL on closed filehandle") ;
+		$this->_set_error("TELL on closed filehandle") ;
 		return -1 ;
 	}
 
@@ -408,6 +426,11 @@ make it compatible with the underlying multiplexing protocol.
 
 Returns 1 on success or undef on error (the error message can be retreived by 
 calling $iomh->get_error()).
+
+=item $iomh->fileno ()
+
+Since there is no real filehandle associated with C<IO::Mux::Handle> objects, 
+$iomh->fileno() returns the ID identifier that was passed to $iomh->open().
 
 =item $iomh->get_error ()
 

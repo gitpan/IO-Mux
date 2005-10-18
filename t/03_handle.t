@@ -1,7 +1,7 @@
 use strict ;
 use IO::Handle ;
 
-use Test::More tests => 41 ;
+use Test::More tests => 58 ;
 BEGIN { use_ok('IO::Mux') } ;
 BEGIN { use_ok('IO::Mux::Handle') } ;
 
@@ -42,8 +42,51 @@ is($buf, 1) ;
 # Read lines
 print $w "line1\n" ;
 is(<$r>, "line1\n") ;
+# Setting $/ ;
+print $w "line1" ;
+print $w "line2" ;
+print $w "line3*" ;
+print $w "line4*" ;
+print $w "line5*" ;
+print $w "line6*" ;
+{
+	local $/ = '*' ;
+	is(<$r>, "line1line2line3*") ;
+}
+# Slurping
+close($w) ;
+{
+	local $/ = undef ;
+	is(<$r>, "line4*line5*line6*") ;
+}
+$rc = $r->open(1) ;
+is($rc, 1) ;
+$rc = $w->open(1) ;
+is($rc, 1) ;
+print $w "line1\n" ;
+print $w "line2\n" ;
+close($w) ;
+$buf = join('', <$r>) ;
+is($buf, "line1\nline2\n") ;
+is(<$r>, undef) ;
+$buf = join('', <$r>) ;
+is(<$r>, undef) ;
+close($r) ;
+
+# Invalid Data
+$rc = $r->open(1) ;
+is($rc, 1) ;
+$rc = print W "123456" ; # 6 is exactly the length of the header
+ok($rc) ;
+is(<$r>, undef) ;
+like($r->get_error(), qr/mismatch/) ;
+close($r) ;
 
 # Reads that span multiple packets.
+$rc = $r->open(1) ;
+is($rc, 1) ;
+$rc = $w->open(1) ;
+is($rc, 1) ;
 $rc = print $w "p11" ;
 is($rc, 3) ;
 $rc = print $w "p21" ;
@@ -89,15 +132,13 @@ $rc = print $r "test" ;
 is($rc, undef) ;
 
 
-# Successful re-open
-$rc = $r->open(1) ;
-is($rc, 1) ;
 # Use standard open to re-open using same handle
+$rc = open($r, 1) ;
+is($rc, 1) ;
 $rc = open($w, 1) ;
 ok($rc) ;
 $buf = "reopened\n" ;
 $rc = syswrite($w, $buf, length($buf) - 2, 2) ;
-# This is incorrect. syswrite should return the number of bytes read.
 is($rc, length($buf) - 2) ;
 is(<$r>, "opened\n") ;
 
@@ -125,9 +166,19 @@ $r2 = $mr->new_handle() ;
 $rc = print $r2 "test" ;
 is($rc, undef) ;
 
-
 # Close on real handle
 close(W) ;
 is(<$r>, undef) ;
+
+close($r) ;
+# Various system calls on closed handle
+$rc = tell($r) ;
+is($rc, -1) ;
+$rc = seek($r, 5, 1) ;
+is($rc, 0) ;
+$rc = binmode($r) ;
+is($rc, undef) ;
+$rc = fileno($r) ;
+is($rc, 'id') ;
 
 
