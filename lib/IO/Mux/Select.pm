@@ -8,7 +8,7 @@ use IO::Mux::Packet ;
 use Carp ;
 
 
-our $VERSION = '0.07' ;
+our $VERSION = '0.08' ;
 
 
 sub new {
@@ -143,9 +143,7 @@ sub can_read {
 				my $mux = $mux_data->{mux} ;
 				# We have data ready on the REAL handle. Let's consume the packet
 				# and add the corresponding IO::Mux::Handle in the new ready list.
-				my $ts = new IO::Select($h) ;
-				while (scalar($ts->can_read(0))){
-					my $p = $mux->_read_packet() ;
+				while ((my $p = $mux->_read_packet(0)) != -1){
 					if ((! defined($p))||(! $p)){
 						# ERROR or EOF on the real handle. Return all mux_handles
 						# as they all now are at EOF or have an error state.
@@ -155,10 +153,11 @@ sub can_read {
 								$ready{$mh} = 1 ;
 							}
 						}
-						$ts->remove($h) ;
+						last ;
 					}
 					else {
 						my $mh = $this->_get_mux_handles()->{$p->get_id()} ;
+						next unless defined($mh) ;
 						if (! $ready{$mh}){
 							push @ready, $mh ;
 							if ($p->is_eof()){

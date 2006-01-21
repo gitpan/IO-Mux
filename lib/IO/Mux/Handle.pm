@@ -5,7 +5,7 @@ use strict ;
 use IO::Handle ;
 
 
-our $VERSION = '0.07' ;
+our $VERSION = '0.08' ;
 
 
 sub new {
@@ -188,14 +188,30 @@ sub READ {
 	return 0 if $this->_get_eof() ;
 
 	# Load the buffer until there is enough data or EOF.
-	while ($this->_get_buffer()->get_length() < $len){
-		my $rc = $this->_read_more_data() ;
+	#while ($this->_get_buffer()->get_length() < $len){
+
+	# We must block if the buffer is empty, otherwise we just check
+	# if there is something pending.
+	my $probe = 1 ;
+	if (! $this->_get_buffer()->get_length()){
+		my $rc = $this->_read_more_data(1) ;
 		if (! defined($rc)){
 			return undef ; # error already set by read_more_data
 		}
 		elsif (! $rc){
 			# EOF
-			last ;
+			$probe = 0 ;
+		}
+	}
+
+	if ($probe){
+		my $rc = 1 ;
+		while ($rc > 0){
+			$rc = $this->_read_more_data(0) ;
+		}
+
+		if (! defined($rc)){
+			return undef ; # error already set by read_more_data
 		}
 	}
 
@@ -229,7 +245,7 @@ sub READLINE {
 		my $idx = -1 ;
 		my $buf = undef ;
 		while ((! length($/))||(($idx = index($this->_get_buffer()->get_data(), $/)) == -1)){
-			my $rc = $this->_read_more_data() ;
+			my $rc = $this->_read_more_data(1) ;
 			if (! defined($rc)){
 				# Return what we got or return undef/() ?
 				last ; # error already set by read_more_data
@@ -266,10 +282,17 @@ sub READLINE {
 
 sub _read_more_data {
 	my $this = shift ;
+	my $blocking = shift ;
+
+	if ($this->_get_buffer()->is_closed()){
+		# The handle is closed.
+		$this->_set_eof() ;
+		return 0 ;
+	}
 
 	my $rc = undef ;
 	eval {
-		$rc = $this->_get_mux()->_read($this->_get_id()) ;
+		$rc = $this->_get_mux()->_read($this->_get_id(), $blocking) ;
 	} ;
 	if ($@){
 		$this->_set_error($@) ;
@@ -277,6 +300,10 @@ sub _read_more_data {
 	}
 	elsif (! defined($rc)){
 		return $rc ;
+	}
+	elsif ($rc == -1){
+		# No data available in non-blocking mode.
+		return -1 ;
 	}
 	elsif (! $rc){
 		# We have reached EOF.

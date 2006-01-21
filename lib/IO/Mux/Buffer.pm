@@ -5,7 +5,7 @@ use IO::Mux::Packet ;
 use Carp ;
 
 
-our $VERSION = '0.07' ;
+our $VERSION = '0.08' ;
 
 
 sub new {
@@ -13,6 +13,7 @@ sub new {
 
 	my $this = {} ;
 	$this->{buf} = '' ;
+	$this->{closed} = 0 ;
 
 	return bless($this, $class) ;
 }
@@ -32,11 +33,23 @@ sub get_data {
 }
 
 
+sub is_closed {
+	my $this = shift ;
+
+	return $this->{closed} ;
+}
+
+
 sub push_packet {
 	my $this = shift ;
 	my $packet = shift ;
 
-	$this->{buf} .= $packet->get_data() ;
+	if ($packet->is_eof()){
+		$this->{closed} = 1 ;
+	}
+	else {
+		$this->{buf} .= $packet->get_data() ;
+	}
 }
 
 

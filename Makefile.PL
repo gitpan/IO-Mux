@@ -9,5 +9,5 @@ WriteMakefile(
 	}, 
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'lib/IO/Mux.pm', # retrieve abstract from module
-       AUTHOR         => 'Patrick LeBoutillier <patrickl@localdomain>') : ()),
+       AUTHOR         => 'Patrick LeBoutillier <patl@cpan.org>') : ()),
 );

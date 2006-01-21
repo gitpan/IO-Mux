@@ -7,10 +7,11 @@ use IO::Mux::Handle ;
 use IO::Mux::Packet ;
 use IO::Mux::Buffer ;
 use IO::Handle ;
+use IO::Select ;
 use Carp ;
 
 
-our $VERSION = '0.07' ;
+our $VERSION = '0.08' ;
 
 
 sub new {
@@ -30,6 +31,7 @@ sub new {
 
 	$this->{fh} = $fh ;
 	$this->{buffers} = {} ;
+	$this->{'select'} = new IO::Select($fh) ;
 
 	return bless($this, $class) ;
 }
@@ -87,22 +89,29 @@ sub _kill_buffer {
 sub _read {
 	my $this = shift ;
 	my $id = shift ;
+	my $blocking = shift ;
 
 	my $p = undef ;
 	while (! defined($p)){
-		my $tp = $this->_read_packet() ;
+		my $tp = $this->_read_packet($blocking) ;
 		if (! defined($tp)){
 			return undef ;
 		}
 		elsif (! $tp){
 			return 0 ;
 		}
-		elsif ($tp->get_id() eq $id){
-			if (! $tp->is_eof()){
-				$p = $tp ;
-			}
-			else {
-				return 0 ;
+		elsif ($tp == -1){
+			# No packet available in non-blocking mode.
+			return -1 ;
+		}
+		else {
+			if ($tp->get_id() eq $id){
+				if (! $tp->is_eof()){
+					$p = $tp ;	
+				}
+				else {
+					return 0 ;
+				}
 			}
 		}
 	}
@@ -111,8 +120,23 @@ sub _read {
 }
 
 
+sub _is_packet_available {
+	my $this = shift ;
+
+	my @ready = $this->{'select'}->can_read(0) ;
+
+	return scalar(@ready) ;
+}
+
+
+# Returns a packet, 0 on real handle EOF or undef on error.
 sub _read_packet {
 	my $this = shift ;
+	my $blocking = shift ;
+
+	if (! $blocking){
+		return -1 unless $this->_is_packet_available() ;
+	}
 
 	my $p = IO::Mux::Packet->read($this->_get_handle()) ;
 	if (! defined($p)){
@@ -122,17 +146,11 @@ sub _read_packet {
 		return 0 ;
 	}
 	else {
-		# Check for EOF packets
-		if ($p->is_eof()){
-			return $p ;
-		}
-		else {
-			# Append the packet data to the correct buffer
-			my $buf = $this->_get_buffer($p->get_id()) ;
-			$buf->push_packet($p) ;
+		# Append the packet data to the correct buffer
+		my $buf = $this->_get_buffer($p->get_id()) ;
+		$buf->push_packet($p) ;
 
-			return $p ;
-		}
+		return $p ;
 	}
 }
 
