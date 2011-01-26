@@ -1,10 +1,23 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         IO-Mux
-version:      0.08
-version_from: lib/IO/Mux.pm
-installdirs:  site
+--- #YAML:1.0
+name:               IO-Mux
+version:            0.11
+abstract:           event driven programming
+author:
+    - Mark Overmeer
+license:            perl
+distribution_type:  module
+configure_requires:
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
 requires:
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.17
+    IO::Socket:  1.18
+    Test::More:  0.8
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.56
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4

@@ -1,0 +1,312 @@
+=head1 NAME
+
+IO::Mux::Bundle - logical group of connections
+
+=head1 INHERITANCE
+
+ IO::Mux::Bundle
+   is a IO::Mux::Handler::Read
+   is a IO::Mux::Handler
+
+ IO::Mux::Bundle
+   is a IO::Mux::Handler::Write
+   is a IO::Mux::Handler
+
+ IO::Mux::Bundle is extended by
+   IO::Mux::IPC
+
+=head1 SYNOPSIS
+
+  my $syscall = IO::Mux::Bundle::Parallel->new(...);
+  $mux->add($syscall);
+
+=head1 DESCRIPTION
+
+A bundle is a set of file handles, so a convenience wrapper around
+a set of different connections with a single purpose.
+
+=head1 METHODS
+
+=head2 Constructors
+
+=over 4
+
+=item IO::Mux::Bundle-E<gt>B<new>(OPTIONS)
+
+The C<stdin>, C<stdout> and C<stderr> objects are from the perspective
+of the other side.
+
+ -Option    --Defined in     --Default
+  fh          IO::Mux::Handler  <required>
+  name        IO::Mux::Handler  <stringified handle>
+  read_size   IO::Mux::Handler::Read  32768
+  stderr                       <undef>
+  stdin                        <required>
+  stdout                       <required>
+  write_size  IO::Mux::Handler::Write  4096
+
+=over 2
+
+=item fh => FILEHANDLE
+
+=item name => STRING
+
+=item read_size => INTEGER
+
+=item stderr => L<IO::Mux::Handler::Read|IO::Mux::Handler::Read>   object
+
+=item stdin => L<IO::Mux::Handler::Write|IO::Mux::Handler::Write>  object
+
+=item stdout => L<IO::Mux::Handler::Read|IO::Mux::Handler::Read>   object
+
+=item write_size => INTEGER
+
+=back
+
+=item IO::Mux::Bundle-E<gt>B<open>(MODE, WHAT, OPTIONS)
+See L<IO::Mux::Handler/"Constructors">
+
+=item IO::Mux::Bundle-E<gt>B<open>(MODE, WHAT, OPTIONS)
+See L<IO::Mux::Handler/"Constructors">
+
+=back
+
+=head2 Accessors
+
+=over 4
+
+=item $obj-E<gt>B<connections>
+
+=item $obj-E<gt>B<fh>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<fh>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<fileno>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<fileno>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<mux>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<mux>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<name>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<name>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<readSize>([INTEGER])
+See L<IO::Mux::Handler::Read/"Accessors">
+
+=item $obj-E<gt>B<stderr>
+
+=item $obj-E<gt>B<stdin>
+
+=item $obj-E<gt>B<stdout>
+
+=item $obj-E<gt>B<usesSSL>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<usesSSL>
+See L<IO::Mux::Handler/"Accessors">
+
+=item $obj-E<gt>B<writeSize>([INTEGER])
+See L<IO::Mux::Handler::Write/"Accessors">
+
+=back
+
+=head2 User interface
+
+=head3 Connection
+
+=over 4
+
+=item $obj-E<gt>B<close>([CALLBACK])
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<close>([CALLBACK])
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<timeout>([TIMEOUT])
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<timeout>([TIMEOUT])
+See L<IO::Mux::Handler/"Connection">
+
+=back
+
+=head3 Reading
+
+=over 4
+
+=item $obj-E<gt>B<readline>(CALLBACK)
+See L<IO::Mux::Handler::Read/"Reading">
+
+=item $obj-E<gt>B<slurp>(CALLBACK)
+See L<IO::Mux::Handler::Read/"Reading">
+
+=back
+
+=head3 Writing
+
+=over 4
+
+=item $obj-E<gt>B<print>(STRING|SCALAR|LIST|ARRAY)
+See L<IO::Mux::Handler::Write/"Writing">
+
+=item $obj-E<gt>B<printf>(FORMAT, PARAMS)
+See L<IO::Mux::Handler::Write/"Writing">
+
+=item $obj-E<gt>B<say>(STRING|SCALAR|LIST|ARRAY)
+See L<IO::Mux::Handler::Write/"Writing">
+
+=item $obj-E<gt>B<write>(SCALAR, [MORE])
+See L<IO::Mux::Handler::Write/"Writing">
+
+=back
+
+=head2 Multiplexer
+
+=head3 Connection
+
+=over 4
+
+=item $obj-E<gt>B<mux_init>(MUX, [HANDLER])
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<mux_init>(MUX, [HANDLER])
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<mux_remove>
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<mux_remove>
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<mux_timeout>
+See L<IO::Mux::Handler/"Connection">
+
+=item $obj-E<gt>B<mux_timeout>
+See L<IO::Mux::Handler/"Connection">
+
+=back
+
+=head3 Reading
+
+=over 4
+
+=item $obj-E<gt>B<mux_eof>(INPUT)
+See L<IO::Mux::Handler::Read/"Reading">
+
+=item $obj-E<gt>B<mux_except_flagged>(FILENO)
+See L<IO::Mux::Handler/"Reading">
+
+=item $obj-E<gt>B<mux_except_flagged>(FILENO)
+See L<IO::Mux::Handler/"Reading">
+
+=item $obj-E<gt>B<mux_input>(BUFFER)
+See L<IO::Mux::Handler::Read/"Reading">
+
+=item $obj-E<gt>B<mux_read_flagged>(FILENO)
+See L<IO::Mux::Handler/"Reading">
+
+=item $obj-E<gt>B<mux_read_flagged>(FILENO)
+See L<IO::Mux::Handler/"Reading">
+
+=back
+
+=head3 Writing
+
+=over 4
+
+=item $obj-E<gt>B<mux_outbuffer_empty>
+See L<IO::Mux::Handler::Write/"Writing">
+
+=item $obj-E<gt>B<mux_output_waiting>
+See L<IO::Mux::Handler::Write/"Writing">
+
+=item $obj-E<gt>B<mux_write_flagged>(FILENO)
+See L<IO::Mux::Handler/"Writing">
+
+=item $obj-E<gt>B<mux_write_flagged>(FILENO)
+See L<IO::Mux::Handler/"Writing">
+
+=back
+
+=head3 Service
+
+=head3 Errors
+
+=over 4
+
+=item $obj-E<gt>B<mux_error>(BUFFER)
+
+Called when new input has arrived on the error channel. It is passed a
+B<reference> to the error BUFFER. It must remove any input that it you
+have consumed from the BUFFER, and leave any partially received data
+in there for more text to arrive.
+
+example: 
+
+  # actually, this is the default behavior
+  sub mux_error
+  {   my ($self, $errbuf) = @_;
+      print STDERR $$errbuf;
+      $$errbuf = '';
+  } 
+
+=back
+
+=head2 Helpers
+
+=over 4
+
+=item $obj-E<gt>B<extractSocket>(HASH)
+
+=item IO::Mux::Bundle-E<gt>B<extractSocket>(HASH)
+See L<IO::Mux::Handler/"Helpers">
+
+=item $obj-E<gt>B<extractSocket>(HASH)
+
+=item IO::Mux::Bundle-E<gt>B<extractSocket>(HASH)
+See L<IO::Mux::Handler/"Helpers">
+
+=item $obj-E<gt>B<fdset>(STATE, READ, WRITE, ERROR)
+See L<IO::Mux::Handler/"Helpers">
+
+=item $obj-E<gt>B<fdset>(STATE, READ, WRITE, ERROR)
+See L<IO::Mux::Handler/"Helpers">
+
+=item $obj-E<gt>B<show>
+See L<IO::Mux::Handler/"Helpers">
+
+=item $obj-E<gt>B<show>
+See L<IO::Mux::Handler/"Helpers">
+
+=back
+
+=head1 SEE ALSO
+
+This module is part of IO-Mux distribution version 0.11,
+built on January 26, 2011. Website: F<http://perl.overmeer.net/>
+All modules in this suite:
+L</Any::Daemon>,
+L</IO::Mux>, and
+L</IO::Mux::HTTP>.
+
+Please post questions or ideas to F<perl@overmeer.net>
+
+=head1 LICENSE
+
+Copyrights 2011 by Mark Overmeer. For other contributors see ChangeLog.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+See F<http://www.perl.com/perl/misc/Artistic.html>
+

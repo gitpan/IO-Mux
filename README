@@ -1,52 +1,25 @@
-IO-Mux version 0.07
-===================
+=== README for IO-Mux version 0.11
+=   Generated on Wed Jan 26 13:02:53 2011 by OODoc 1.06
 
-IO::Mux - Multiplex several virtual streams over a real pipe/socket
+There are various ways to install this module:
 
-Example:
+ (1) if you have a command-line, you can do:
+       perl -MCPAN -e 'install <any package from this distribution>'
 
-    use IO::Mux ;
+ (2) if you use Windows, have a look at http://ppm.activestate.com/
 
-    pipe(R, W) ;
+ (3) if you have downloaded this module manually (as root/administrator)
+       gzip -d IO-Mux-0.11.tar.gz
+       tar -xf IO-Mux-0.11.tar
+       cd IO-Mux-0.11
+       perl Makefile.PL
+       make          # optional
+       make test     # optional
+       make install
 
-    if (fork){
-        my $mux = new IO::Mux(\*W) ;
-        my $alice = $mux->new_handle() ;
-        open($alice, 'alice') ;
-        my $bob = $mux->new_handle() ;
-        open($bob, 'bob') ;
+For usage, see the included manual-pages or
+    http://search.cpan.org/dist/IO-Mux-0.11/
 
-        print $alice "Hi Alice!\n" ;
-        print $bob "Hi Bob!\n" ;
-    }
-    else {
-        my $mux = new IO::Mux(\*R) ;
-        my $alice = $mux->new_handle() ;
-        open($alice, 'alice') ;
-        my $bob = $mux->new_handle() ;
-        open($bob, 'bob') ;
-
-        print scalar(<$bob>) ;
-        print scalar(<$alice>) ;
-    }
-
-
-INSTALLATION
-
-To install this module type the following:
-
-   perl Makefile.PL
-   make
-   make test
-   make install
-
-
-COPYRIGHT AND LICENCE
-
-Copyright (C) 2005 by Patrick LeBoutillier
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.8.5 or,
-at your option, any later version of Perl 5 you may have available.
-
+Please report problems to
+    http://rt.cpan.org/Dist/Display.html?Queue=IO-Mux
 

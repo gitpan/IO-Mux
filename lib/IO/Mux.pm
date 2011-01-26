@@ -1,274 +1,172 @@
-package IO::Mux ;
+# Copyrights 2011 by Mark Overmeer.
+#  For other contributors see ChangeLog.
+# See the manual pages for details on the licensing terms.
+# Pod stripped from pm file by OODoc 1.07.
+use warnings;
+use strict;
 
-use 5.008 ;
-use strict ;
-use Symbol ;
-use IO::Mux::Handle ;
-use IO::Mux::Packet ;
-use IO::Mux::Buffer ;
-use IO::Handle ;
-use IO::Select ;
-use Carp ;
+package IO::Mux;
+use vars '$VERSION';
+$VERSION = '0.11';
+
+use Log::Report 'io-mux';
+
+use List::Util  'min';
+use POSIX       'errno_h';
+
+$SIG{PIPE} = 'IGNORE';     # pipes are handled in mux
+
+use constant
+  { LONG_TIMEOUT   => 60   # no-one has set a timeout
+  };
 
 
-our $VERSION = '0.08' ;
+sub new(@)  {my $class = shift; (bless {}, $class)->init( {@_} ) }
+sub init($)
+{   my ($self, $args) = @_;
+    $self->{IM_handlers} = {};
+    $self->{IM_timeouts} = {};
+    $self;
+}
 
+#-------------
 
-sub new {
-	my $class = shift ;
-	my $fh = shift ;
+#-------------
 
-	my $this = {} ;
-	if (UNIVERSAL::isa($fh, 'GLOB')){
-		# Make sure we save the actual IO bit, not the entire GLOB ref, because
-		# one typical usage could be to place \*STDOUT in a IO::Mux object and then
-		# do: *STDOUT = $mux. If we save the GLOB ref, that will create infinite
-		# recursion as the GLOB is deferenced each time to get the IO bit.
-		$this->{'glob'} = $fh ;
-		$fh = *{$fh}{IO} ;
-	}
-	$fh->autoflush(1) ;
+# add() is the main user interface to mux, because from then the
+# user works with connection objects. Therefore, offer some extra
+# features here.
 
-	$this->{fh} = $fh ;
-	$this->{buffers} = {} ;
-	$this->{'select'} = new IO::Select($fh) ;
+sub add($)
+{   my ($self, $handler) = @_;
 
-	return bless($this, $class) ;
+    UNIVERSAL::isa($handler, 'IO::Mux::Handler')
+        or error __x"attempt to add non handler {pkg}"
+          , pkg => (ref $handler || $handler);
+
+    $handler->mux_init($self);
+    $handler;
 }
 
 
-sub get_handle {
-	my $this = shift ;
-
-	return (defined($this->{'glob'}) ? $this->{'glob'} : $this->{fh}) ;
+sub open(@)
+{   my $self = shift;
+    IO::Mux::Open->can('new')
+        or error __x"IO::Mux::Open not loaded";
+    my $conn = IO::Mux::Open->new(@_);
+    $self->add($conn) if $conn;
+    $conn;
 }
 
 
-sub _get_handle {
-	my $this = shift ;
+sub loop(;$)
+{   my($self, $heartbeat) = @_;
+    $self->{IM_endloop} = 0;
 
-	return $this->{fh} ;
+  LOOP:
+    while(!$self->{IM_endloop} && keys %{$self->{IM_handlers}})
+    {
+#       while(my($fileno, $conn) = each %{$self->{IM_handlers}})
+#       {   $conn->read
+#               if $conn->usesSSL && $conn->pending;
+#       }
+
+        my $timeout = $self->{IM_next_timeout};
+        my $wait    = defined $timeout ? $timeout-time : LONG_TIMEOUT;
+
+        # For negative values, still give select a chance, to avoid
+        # starvation when timeout handling starts consuming all
+        # processor time.
+        $wait       = 0.001 if $wait < 0.001;
+
+        $self->one_go($wait, $heartbeat)
+            or last LOOP;
+
+        $self->_checkTimeouts($timeout);
+    }
+
+    $_->close
+        for values %{$self->{IM_handlers}};
 }
 
 
-sub new_handle {
-	my $this = shift ;
+sub endLoop($) { $_[0]->{IM_endloop} = $_[1] }
 
-	return new IO::Mux::Handle($this) ;
+#-------------
+
+sub handlers()  {values %{shift->{IM_handlers}}}
+sub _handlers() {shift->{IM_handlers}}
+
+
+sub handler($;$)
+{   my $hs     = shift->{IM_handlers};
+    my $fileno = shift;
+    @_ or return $hs->{$fileno};
+    (defined $_[0]) ? ($hs->{$fileno} = shift) : (delete $hs->{$fileno});
 }
 
 
-sub _get_buffer {
-	my $this = shift ;
-	my $id = shift ;
+sub remove($)
+{   my ($self, $fileno) = @_;
 
-	if (! $this->_buffer_exists($id)){
-		$this->{buffers}->{$id} = new IO::Mux::Buffer() ; 
-	}
+    my $obj = delete $self->{IM_handlers}{$fileno}
+        or return $self;
 
-	return $this->{buffers}->{$id} ;
+    $self->fdset($fileno, 0, 1, 1, 1);
+    $obj->mux_remove;
+
+    if(my $timeout = delete $self->{IM_timeouts}{$fileno})
+    {   delete $self->{IM_next_timeout}
+            if $self->{IM_next_timeout}==$timeout;
+    }
+
+    $self;
 }
 
 
-sub _buffer_exists {
-	my $this = shift ;
-	my $id = shift ;
+sub fdset($$$$$) {panic}
 
-	return defined($this->{buffers}->{$id}) ;
+
+sub changeTimeout($$$)
+{   my ($self, $fileno, $old, $when) = @_;
+    return if $old==$when;
+
+    my $next = $self->{IM_next_timeout};
+    if($old)
+    {   # next timeout will be recalculated max once per loop
+        delete $self->{IM_timeouts}{$fileno};
+        $self->{IM_next_timeout} = $next = undef if $next && $next==$old;
+    }
+
+    if($when)
+    {   $self->{IM_next_timeout} = $when if !$next || $next > $when;
+        $self->{IM_timeouts}{$fileno} = $when;
+    }
 }
 
+# handle all timeouts which have expired either during the select
+# or during the processing of flags.
+sub _checkTimeouts($)
+{   my ($self, $next) = @_;
 
-sub _kill_buffer {
-	my $this = shift ;
-	my $id = shift ;
+    my $now  = time;
+    if($next && $now < $next)
+    {   # Even when next is cancelled, none can have expired.
+        # However, a new timeout may have arrived which may expire immediately.
+        return $next if $self->{IM_next_timeout};
+    }
 
-	delete $this->{buffers}->{$id} ;
+    my $timo = $self->{IM_timeouts};
+    my $hnd  = $self->{IM_handlers};
+    while(my ($fileno, $when) = each %$timo)
+    {   $when <= $now or next;
+        $hnd->{$fileno}->mux_timeout($self);
+        delete $timo->{$fileno};
+    }
+
+    $self->{IM_next_timeout} = min values %$timo;
 }
 
+1;
 
-sub _read {
-	my $this = shift ;
-	my $id = shift ;
-	my $blocking = shift ;
-
-	my $p = undef ;
-	while (! defined($p)){
-		my $tp = $this->_read_packet($blocking) ;
-		if (! defined($tp)){
-			return undef ;
-		}
-		elsif (! $tp){
-			return 0 ;
-		}
-		elsif ($tp == -1){
-			# No packet available in non-blocking mode.
-			return -1 ;
-		}
-		else {
-			if ($tp->get_id() eq $id){
-				if (! $tp->is_eof()){
-					$p = $tp ;	
-				}
-				else {
-					return 0 ;
-				}
-			}
-		}
-	}
-
-	return $p->get_length() ;
-}
-
-
-sub _is_packet_available {
-	my $this = shift ;
-
-	my @ready = $this->{'select'}->can_read(0) ;
-
-	return scalar(@ready) ;
-}
-
-
-# Returns a packet, 0 on real handle EOF or undef on error.
-sub _read_packet {
-	my $this = shift ;
-	my $blocking = shift ;
-
-	if (! $blocking){
-		return -1 unless $this->_is_packet_available() ;
-	}
-
-	my $p = IO::Mux::Packet->read($this->_get_handle()) ;
-	if (! defined($p)){
-		return undef ;
-	}
-	elsif (! $p){
-		return 0 ;
-	}
-	else {
-		# Append the packet data to the correct buffer
-		my $buf = $this->_get_buffer($p->get_id()) ;
-		$buf->push_packet($p) ;
-
-		return $p ;
-	}
-}
-
-
-sub _write {
-	my $this = shift ;
-	my $packet = shift ;
-
-	return $packet->write($this->_get_handle()) ;
-}
-
-
-
-1 ;
 __END__
-=head1 NAME
-
-IO::Mux - Multiplex several virtual streams over a real pipe/socket
-
-=head1 SYNOPSIS
-
-  use IO::Mux ;
-
-  pipe(R, W) ;
-
-  if (fork){
-      my $mux = new IO::Mux(\*W) ;
-      my $alice = $mux->new_handle() ;
-      open($alice, 'alice') ;
-      my $bob = $mux->new_handle() ;
-      open($bob, 'bob') ;
-
-      print $alice "Hi Alice!\n" ;
-      print $bob "Hi Bob!\n" ;
-  }
-  else {
-      my $mux = new IO::Mux(\*R) ;
-      my $alice = $mux->new_handle() ;
-      open($alice, 'alice') ;
-      my $bob = $mux->new_handle() ;
-      open($bob, 'bob') ;
-
-      print scalar(<$bob>) ;
-      print scalar(<$alice>) ;
-  }
-
-
-=head1 DESCRIPTION
-
-C<IO::Mux> allows you to multiplex several virtual streams over a single pipe
-or socket. This is achieved by creating an C<IO::Mux> object on each end of the 
-real stream and then creating virtual handles (C<IO::Mux::Handle> objects) from
-these C<IO::Mux> objects.
-
-Each C<IO::Mux::Handle> object is assigned a unique identifier when opened, and 
-C<IO::Mux::Handle> objects on each end of the real stream that have the same
-identifier are "mapped" to each other.
-
-
-=head1 CONSTRUCTOR
-
-=over 4
-
-=item new ( HANDLE )
-
-Creates a new C<IO::Mux> object that multiplexes over HANDLE. C<autoflush> will
-be turned on for HANDLE.
-
-=back
-
-
-=head1 METHODS
-
-=over 4
-
-=item $mux->get_handle ()
-
-Returns the handle passed when $mux was created. Note that if a GLOB reference
-was originately passed, only the IO component of the glob will be returned. 
-Therefore it is possible that the value returned here be different than the one
-actually passed in the constructor.
-
-=item $mux->new_handle ()
-
-Convenience method. Returns a new L<IO::Mux::Handle> object
-created on $mux. Is equivalent to:
-
-  new IO::Mux::Handle($mux) ;
-
-The handle must then be opened before being used. See L<IO::Mux::Handle>
-for more details.
-
-=back
-
-
-=head1 NOTE
-
-Once a handle has been passed to an C<IO::Mux> object, it is important that 
-it is not written to/read from directly as this will corrupt the C<IO::Mux> 
-stream. Once the C<IO::Mux> objects on both ends of the stream are out of 
-scope (and have no data pending), normal usage of the handleis can resume.
-
-
-=head1 SEE ALSO
-
-L<IO::Mux::Handle>
-
-=head1 AUTHOR
-
-Patrick LeBoutillier, E<lt>patl@cpan.orgE<gt>
-
-=head1 COPYRIGHT AND LICENSE
-
-Copyright (C) 2005 by Patrick LeBoutillier
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.8.5 or,
-at your option, any later version of Perl 5 you may have available.
-
-
-=cut

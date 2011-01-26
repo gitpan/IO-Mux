@@ -1,0 +1,128 @@
+=head1 NAME
+
+IO::Mux::Poll - simplify use of poll()
+
+=head1 INHERITANCE
+
+ IO::Mux::Poll
+   is a IO::Mux
+
+=head1 SYNOPSIS
+
+  use IO::Mux::Poll;
+
+  my $mux    = IO::Mux::Poll->new;
+  my $server = IO::Mux::Service::TCP->new(...);
+  $mux->add($server);
+  $mux->loop;
+
+=head1 DESCRIPTION
+
+Multiplexer based on the C<poll()> system call, defined by POSIX.
+
+The C<poll> has less administration overhead than the C<select> call
+(implemented via L<IO::Mux::Select|IO::Mux::Select>) because it avoids the need to play
+with bit-vectors to see which file handles got activated. However,
+C<poll> is not supported on all platforms.
+
+=head1 METHODS
+
+=head2 Constructors
+
+=over 4
+
+=item IO::Mux::Poll-E<gt>B<new>(OPTIONS)
+See L<IO::Mux/"Constructors">
+
+=back
+
+=head2 Accessors
+
+=over 4
+
+=item $obj-E<gt>B<poller>
+
+The internal IO::Poll object.
+
+=back
+
+=head2 User interface
+
+=over 4
+
+=item $obj-E<gt>B<add>(HANDLER|BUNDLE)
+See L<IO::Mux/"User interface">
+
+=item $obj-E<gt>B<endLoop>(BOOLEAN)
+See L<IO::Mux/"User interface">
+
+=item $obj-E<gt>B<loop>([HEARTBEAT])
+See L<IO::Mux/"User interface">
+
+=item $obj-E<gt>B<open>(MODE, PARAMS)
+See L<IO::Mux/"User interface">
+
+=back
+
+=head2 For internal use
+
+=over 4
+
+=item $obj-E<gt>B<changeTimeout>(FILENO, OLDTIMEOUT, NEWTIMEOUT)
+See L<IO::Mux/"For internal use">
+
+=item $obj-E<gt>B<fdset>(FILENO, STATE, READ, WRITE, EXCEPT)
+See L<IO::Mux/"For internal use">
+
+=item $obj-E<gt>B<handler>(FILENO, [HANDLER])
+See L<IO::Mux/"For internal use">
+
+=item $obj-E<gt>B<handlers>
+See L<IO::Mux/"For internal use">
+
+=item $obj-E<gt>B<remove>(FILENO)
+See L<IO::Mux/"For internal use">
+
+=back
+
+=head1 DETAILS
+
+=head2 Installation
+
+=head2 Event managers
+
+=head2 File handles
+
+=head2 Alternatives
+
+=head3 IO::Multiplex
+
+=head4 Difference to IO::Multiplex
+
+=head3 IO::Async / Net::Async
+
+=head2 Implementation limitations
+
+Poll is only available on UNIX.  Windows Vista has added a WSAPoll with
+comparible functionality (probably), but afaik there is no binary wrapper
+available for perl yet.
+
+=head1 SEE ALSO
+
+This module is part of IO-Mux distribution version 0.11,
+built on January 26, 2011. Website: F<http://perl.overmeer.net/>
+All modules in this suite:
+L</Any::Daemon>,
+L</IO::Mux>, and
+L</IO::Mux::HTTP>.
+
+Please post questions or ideas to F<perl@overmeer.net>
+
+=head1 LICENSE
+
+Copyrights 2011 by Mark Overmeer. For other contributors see ChangeLog.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+See F<http://www.perl.com/perl/misc/Artistic.html>
+

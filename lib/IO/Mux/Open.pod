@@ -1,0 +1,85 @@
+=head1 NAME
+
+IO::Mux::Open - simulate the open() function
+
+=head1 SYNOPSIS
+
+  use IO::Mux::Open qw( -| |- |-| < > >> tcp);
+
+  # pipe for reading
+  my $who = $mux->open('-|', 'who', 'am', 'i');
+  print <$who>;
+
+  # two-way connection (like IPC::Open3)
+  my $echo = $mux->open('=|', 'cat');
+
+  # file
+  my $pw = $mux->open('<', '/etc/passwd');
+  my @noshell = grep /\:$/, <$pw>;
+
+=head1 DESCRIPTION
+
+This module is a simple wrapper to bring various alternative connection
+implementations closer to normal Perl. It also saves you a lot of explicit
+require (C<use>) lines of code.
+
+With this module, code is simplified. For instance, the real logic is:
+
+  use IO::Mux::Pipe::Read;
+  my $who = IO::Mux::Pipe::Read->new
+   ( run_shell => [ 'who', 'am', 'i' ]
+   );
+  $mux->add($who);
+  print <$who>;
+
+In the short syntax provided with this module:
+
+  use IO::Mux::Open '-|';
+  my $who = $mux->open('-|', 'who', 'am', 'i');
+  print <$who>;
+
+You only need to C<use> one C<::Open> module with some parameter, in
+stead of requiring all long names explicitly. As you can see, the
+object gets added to the mux as well.
+
+=head1 METHODS
+
+=head2 Constructors
+
+=over 4
+
+=item IO::Mux::Open-E<gt>B<new>(MODE, PARAMS)
+
+Available MODES are 
+
+    -|  IO::Mux::Pipe::Read
+   |-   IO::Mux::Pipe::Write
+   |-|  IO::Mux::IPC
+   |=|  IO::Mux::IPC          (with errors)
+    >   IO::Mux::File::Write
+    >>  IO::Mux::File::Write  (appendinf)
+    <   IO::Mux::File::Read
+
+=back
+
+=head2 Accessors
+
+=head1 SEE ALSO
+
+This module is part of IO-Mux distribution version 0.11,
+built on January 26, 2011. Website: F<http://perl.overmeer.net/>
+All modules in this suite:
+L</Any::Daemon>,
+L</IO::Mux>, and
+L</IO::Mux::HTTP>.
+
+Please post questions or ideas to F<perl@overmeer.net>
+
+=head1 LICENSE
+
+Copyrights 2011 by Mark Overmeer. For other contributors see ChangeLog.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+See F<http://www.perl.com/perl/misc/Artistic.html>
+

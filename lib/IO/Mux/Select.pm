@@ -1,279 +1,123 @@
-package IO::Mux::Select ;
+# Copyrights 2011 by Mark Overmeer.
+#  For other contributors see ChangeLog.
+# See the manual pages for details on the licensing terms.
+# Pod stripped from pm file by OODoc 1.07.
+use warnings;
+use strict;
 
-use strict ;
-use IO::Select ;
-use IO::Mux ;
-use IO::Mux::Handle ;
-use IO::Mux::Packet ;
-use Carp ;
+package IO::Mux::Select;
+use vars '$VERSION';
+$VERSION = '0.11';
+
+use base 'IO::Mux';
+
+use Log::Report 'io-mux';
+
+use List::Util  'min';
+use POSIX       'errno_h';
+
+$SIG{PIPE} = 'IGNORE';   # pipes are handled in select
 
 
-our $VERSION = '0.08' ;
-
-
-sub new {
-	my $class = shift ;
-
-	my $this = {} ;
-	$this->{'select'} = new IO::Select() ;
-	$this->{mux_handles} = {} ;
-	bless($this, $class) ;
-
-	$this->add(@_) ;
-
-	return $this ;
+sub init($)
+{   my ($self, $args) = @_;
+    $self->SUPER::init($args);
+    $self->{IMS_readers} = '';
+    $self->{IMS_writers} = '';
+    $self->{IMS_excepts}  = '';
+    $self;
 }
 
+#-----------------
 
-sub _get_select {
-	my $this = shift ;
+sub _flags2string($);
+sub showFlags($;$$)
+{   my $self = shift;
+    return _flags2string(shift)
+        if @_==1;
 
-	return $this->{'select'} ;
+    my ($rdbits, $wrbits, $exbits) = @_ ? @_ : $self->selectFlags;
+    my $rd = _flags2string $rdbits;
+    my $wr = _flags2string $wrbits;
+    my $ex = _flags2string $exbits;
+
+    <<__SHOW;
+  read: $rd
+ write: $wr
+except: $ex
+__SHOW
 }
 
-
-sub _get_mux_handles {
-	my $this = shift ;
-
-	return $this->{mux_handles} ;
-}
-
-
-sub add {
-	my $this = shift ;
-
-	foreach my $h (@_){
-		if ($h->isa('IO::Mux::Handle')){
-			$this->_get_mux_handles()->{$h->_get_tie()->_get_id()} = $h ;
-		}
-		else { 
-			$this->_get_select()->add($h) ;
-		}
-	}
-}
-
-
-sub remove {
-	my $this = shift ;
-
-	foreach my $h (@_){
-		if ($h->isa('IO::Mux::Handle')){
-			delete $this->_get_mux_handles()->{$h->_get_tie()->_get_id()} ;
-		}		
-		elsif ($this->_get_select()->exists($h)){
-			$this->_get_select()->remove($h) ;
-		}
-	}
-}
-
-
-sub exists {
-	my $this = shift ;
-	my $h = shift ;
-
-	if ($h->isa('IO::Mux::Handle')){
-		return $this->_get_mux_handles()->{$h->_get_tie()->_get_id()} ;
-	}
-	else {
-		return $this->_get_select()->exists($h) ;
-	}
-}
-
-
-sub handles {
-	my $this = shift ;
-
-	my @ret = () ;
-	push @ret, values %{$this->_get_mux_handles()} ;
-	push @ret, $this->_get_select()->handles() ;
-
-	return @ret ;
-}
-
-
-sub count {
-	my $this = shift ;
-
-	return scalar($this->handles()) ;
-}
-
-
-sub can_read {
-	my $this = shift ;
-	my $timeout = shift ;
-
-	# First, we will check to see if the IO::Mux::Handles have data in their buffers.
-	my @ready = () ;
-	foreach my $h (values %{$this->_get_mux_handles()}){
-		if ((eof($h))||($h->_get_tie()->_get_buffer()->get_length() > 0)){
-			push @ready, $h ;
-		}
-	}
-
-	if (scalar(@ready)){
-		# Maybe some real handles are immediately ready
-		push @ready, $this->_get_select()->can_read(0) ;
-		return @ready ;
-	}
-
-	# So it seems we may have to wait after all. We now need to build a list
-	# of all the REAL handles underneath all the IO::Mux::Handles.
-	my %mux_objects = () ;
-	foreach my $h (values %{$this->_get_mux_handles()}){
-		my $mux = $h->_get_tie()->_get_mux() ;
-		my $rh = $mux->_get_handle() ;
-		if (! exists($mux_objects{$rh})){
-			$mux_objects{$rh} = {mux => $mux, mux_handles => {}} ;
-		}
-		$mux_objects{$rh}->{mux_handles}->{$h} = $h ;
-	}
-
-	my @real_handles = map {$_->{mux}->_get_handle()} values(%mux_objects) ;
-	$this->_get_select()->add(@real_handles) ;
-	@ready = $this->_get_select()->can_read($timeout) ;
-	$this->_get_select()->remove(@real_handles) ;
-
-	if (scalar(@ready)){
-		my @tmp = @ready ;
-		my %ready = () ;
-		@ready = () ;
-		foreach my $h (@tmp){
-			my $mux_data = $mux_objects{$h} ;
-			if ($mux_data){
-				my $mux = $mux_data->{mux} ;
-				# We have data ready on the REAL handle. Let's consume the packet
-				# and add the corresponding IO::Mux::Handle in the new ready list.
-				while ((my $p = $mux->_read_packet(0)) != -1){
-					if ((! defined($p))||(! $p)){
-						# ERROR or EOF on the real handle. Return all mux_handles
-						# as they all now are at EOF or have an error state.
-						foreach my $mh (values %{$mux_data->{mux_handles}}){
-							if (! $ready{$mh}){
-								push @ready, $mh ;
-								$ready{$mh} = 1 ;
-							}
-						}
-						last ;
-					}
-					else {
-						my $mh = $this->_get_mux_handles()->{$p->get_id()} ;
-						next unless defined($mh) ;
-						if (! $ready{$mh}){
-							push @ready, $mh ;
-							if ($p->is_eof()){
-								$mh->_get_tie()->_set_eof() ;
-							}
-							$ready{$mh} = 1 ;
-						}
-					}
-				}
-			}
-			else {
-				# REAL handle, we simply push it.
-				push @ready, $h ;
-			}
-		}
-	}
-
-	return @ready ;
-}
-
-
-1 ;
-__END__
-=head1 NAME
-
-IO::Mux::Select - Drop-in replacement for L<IO::Select> when using 
-L<IO::Mux::Handle> objects.
-
-=head1 SYNOPSIS
-
-  use IO::Mux ;
-  use IO::Mux::Select ;
-
-  my $mux = new IO::Mux(\*R) ;
-  my $alice = $mux->new_handle() ;
-  open($alice, 'alice') ;
-  my $bob = $mux->new_handle() ;
-  open($bob, 'bob') ;
-
-  my $ims = new IO::Mux::Select($alice, $bob) ;
-  while(my @ready = $ims->can_read()){
-    foreach my $h (@ready){
-      # Do something useful...
+sub _flags2string($)
+{   my $bytes = shift;
+    use bytes;
+    my $bits  = length($bytes) * 8;
+    my $out   = '';
+    for my $fileno (0..$bits-1)
+    {   $out .= vec($bytes, $fileno, 1)==1 ? ($fileno%10) : '-';
     }
-  }
+    $out =~ s/-+$//;
+    length $out ? $out : '(none)';
+}
+
+#--------------------------
+
+sub fdset($$$$$)
+{   my ($self, $fileno, $state, $r, $w, $e) = @_;
+    vec($self->{IMS_readers}, $fileno, 1) = $state if $r;
+    vec($self->{IMS_writers}, $fileno, 1) = $state if $w;
+    vec($self->{IMS_excepts}, $fileno, 1) = $state if $e;
+    # trace "fdset(@_), now: " .$self->showFlags($self->waitFlags);
+}
+
+sub one_go($$)
+{   my ($self, $wait, $heartbeat) = @_;
+
+#   trace "SELECT=".$self->showFlags($self->waitFlags);
+
+    my ($rdready, $wrready, $exready) = ('', '', '');
+    my ($numready, $timeleft) = select
+       +($rdready = $self->{IMS_readers})
+      , ($wrready = $self->{IMS_writers})
+      , ($exready = $self->{IMS_excepts})
+      , $wait;
+
+#   trace "READY=".$self->showFlags($rdready, $wrready, $exready);
+
+    if($heartbeat)
+    {   # can be collected from within heartbeat
+        $self->{IMS_select_flags} = [$rdready, $wrready, $exready];
+        $heartbeat->($self, $numready, $timeleft)
+    }
+
+    unless(defined $numready)
+    {   return if $! == EINTR || $! == EAGAIN;
+        alert "Leaving loop with $!";
+        return 0;
+    }
+
+    # Hopefully the regexp improves performance when many slow connections
+    $self->_ready(mux_read_flagged  => $rdready) if $rdready =~ m/[^\x00]/;
+    $self->_ready(mux_write_flagged => $wrready) if $wrready =~ m/[^\x00]/;
+    $self->_ready(mux_except_flagged => $exready) if $exready =~ m/[^\x00]/;
+    1;  # success
+}
+
+# It would be nice to have an algorithm which is better than O(n)
+sub _ready($$)
+{   my ($self, $call, $flags) = @_;
+    my $handlers = $self->_handlers;
+    while(my ($fileno, $conn) = each %$handlers)
+    {   $conn->$call($fileno) if (vec $flags, $fileno, 1)==1;
+    }
+}
 
 
-=head1 DESCRIPTION
-
-C<IO::Mux::Select> is a drop-in replacement for L<IO::Select> that knows how 
-to deal with L<IO::Mux::Handle> handles. It also supports real handles so 
-you can mix L<IO::Mux::Handle> handles with real handles.
+sub waitFlags() { @{$_[0]}{ qw/IMS_readers IMS_writers IMS_excepts/} }
 
 
-=head1 CONSTRUCTOR
+sub selectFlags() { @{shift->{IMS_select_flags} || []} }
 
-=over 4
+1;
 
-=item new ( [ HANDLES ] )
-
-The constructor creates a new object and optionally initialises it with a set
-of handles.
-
-=back
-
-
-=head1 METHODS
-
-The same interface as L<IO::Select> is supported, with the following 
-exceptions:
-
-=over 4
-
-=item can_read ( [ TIMEOUT ] )
-
-This method behaves pretty much like the L<IO::Select> one, except it is not 
-guaranteed that it will return before TIMEOUT seconds. The reason for this is 
-that the L<IO:Mux::Handle> objets handle data in packets, so if data is 
-"detected" on such a handle, can_read() must read the entire packet before 
-returning.
-
-=item can_write ( [ TIMEOUT ] )
-
-Not implemented.
-
-=item has_exception ( [ TIMEOUT ] )
-
-Not implemented.
-
-=item bits ()
-
-Not implemented.
-
-=item select ( READ, WRITE, EXCEPTION [, TIMEOUT ] )
-
-Not implemented.
-
-=back
-
-
-=head1 SEE ALSO
-
-L<IO::Select>, L<IO::Mux>, L<IO::Mux::Handle>
-
-
-=head1 AUTHOR
-
-Patrick LeBoutillier, E<lt>patl@cpan.orgE<gt>
-
-=head1 COPYRIGHT AND LICENSE
-
-Copyright (C) 2005 by Patrick LeBoutillier
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.8.5 or,
-at your option, any later version of Perl 5 you may have available.
-
-
-=cut
+__END__
